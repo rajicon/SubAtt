@@ -1,6 +1,4 @@
-#this is train_CA_pytorch_NEW.py but adapted to Crossword_All_Versions
-
-#this just used to quickly check if model works
+#torch version of train_sub_embeddings.py
 
 import torch
 import torch.nn as nn
@@ -18,6 +16,8 @@ from tqdm import tqdm
 import random
 import math
 
+from Subword_Torch import Subword_Torch
+
 
 
 sys.path.insert(1, 'Combined_AttentionExperiments/')
@@ -25,36 +25,19 @@ sys.path.insert(1, 'Combined_AttentionExperiments/')
 from sub_data_loader import SubDataLoader
 
 
-from SubAtt_All_Versions import SubAtt_All_Versions
-
-model_type = sys.argv[1]
-out_directory = sys.argv[2] 
-my_train_folder = sys.argv[3]
-sub_directory = sys.argv[4]
-emb_file = sys.argv[5] #/scratch/rpatel17/April9_Fixed_Min_Freq/herbelot_and_baroni400.txt
-num_ep = int(sys.argv[6])  #number of epochs
-dropout= float(sys.argv[7]) #dropout (if any)
-min_amount_of_context = float(sys.argv[8]) #min context size
-max_amount_of_context = float(sys.argv[9]) #max context size
-input_lr = float(sys.argv[10])
-min_file_ind = int(sys.argv[11])
-max_file_ind = int(sys.argv[12])
-my_seed = int(sys.argv[13])
-min_word_freq = int(sys.argv[14]) #100 vs 5  (I use 100 for bert, 5 for herbelot)
-num_layers = int(sys.argv[15])
-speed = sys.argv[16]
-emb_dim = int(sys.argv[17]) #400
-my_nhead = int(sys.argv[18]) #10
-
-use_pos = True
-
-if speed == 'fast':
-    fast=True
-elif speed == 'slow':
-    fast=False
-else:
-    print('pick valid speed'-2)
-
+out_directory = sys.argv[1]
+train_folder = sys.argv[2]
+emb_file = sys.argv[3]
+num_ep = int(sys.argv[4])  #number of epochs
+dropout= float(sys.argv[5]) #dropout (if any)
+min_amount_of_context = float(sys.argv[6]) #doesn't use
+max_amount_of_context = float(sys.argv[7]) #doesn't use
+input_lr = float(sys.argv[8])
+min_file_ind = int(sys.argv[9])
+max_file_ind = int(sys.argv[10])
+my_seed = int(sys.argv[11])
+min_word_freq = int(sys.argv[12])
+train_val_dict_filename = sys.argv[13]
 
 batch_size = 64
 
@@ -69,8 +52,6 @@ def NonZero(sent):
 
     return False
     
-    
-#removes blank contexts and blank subwords (leads to divide by 0 errors)    
 def remove_blank_contexts_and_subs(subwords_list, contexts_set_list, labels_list):
 
     new_context_set_list2 = []
@@ -113,22 +94,38 @@ def remove_blank_contexts_and_subs(subwords_list, contexts_set_list, labels_list
     return new_sub_list3, new_context_set_list3, new_label_list3
 
  
-
-\
-
-sub_emb_file =  sub_directory + 'best_ep_subword_emb_gensim.txt'
-train_folder = my_train_folder
+word_emb_file = emb_file
 
 train_file_vocab = 'train.vwc100'
 
+train_val_dict = pickle.load( open( train_val_dict_filename, "rb" ) )
 
-#command line parameter!
-data = pickle.load( open( sub_directory + "full_data_loader.p", "rb" ) )
+train_count = 0
+val_count = 0
+for wrd in train_val_dict:
+    if train_val_dict[wrd] == 'train':
+        train_count = train_count + 1
 
-if data.min_freq != min_word_freq:
-    print('min word freq doesnt match'-9)
+    if train_val_dict[wrd] == 'val':
+        val_count = val_count + 1
+        
+print('train count : '+str(train_count))
+print('val count : '+str(val_count))
+print('total : '+str(len(train_val_dict.keys())))
+print('--')        
 
-sub_embeddings = gensim.models.KeyedVectors.load_word2vec_format(sub_emb_file, binary=False)
+data = SubDataLoader(vocab_path=train_folder+train_file_vocab, word_emb_file=word_emb_file, train_val_dict=train_val_dict, subword_type='ngram', ngram_dropout = dropout, min_freq=min_word_freq)
+#data = SubDataLoader(vocab_path=train_folder+train_file_vocab, word_emb_file=word_emb_file, train_val_dict=train_val_dict, subword_type='ngram', ngram_dropout = dropout, min_freq=min_word_freq, min_sub_freq=10)
+
+vocab_size = len(data.word_embeddings.wv.vocab)
+
+subword_vocab_size = len(data.sub2id_dict)
+word_emb_dim = data.word_embeddings.wv.vector_size  #400 #300
+
+
+print('voc size : '+str(vocab_size))
+print('sub voc size : '+str(subword_vocab_size))
+
 
 
 
@@ -168,20 +165,11 @@ lr_init = input_lr
 device = torch.device("cuda:%d" % 0)
 print(device)
 
-if model_type == 'No_Pretrain_No_SubAtt':
-    our_model = SubAtt_All_Versions(data=data, sub_emb_model=None, use_sub_attention=False, dim=emb_dim, nhead=my_nhead, num_layer=num_layers, fast=fast).to(device)
-
-if model_type == 'Pretrain_No_SubAtt':
-    our_model = SubAtt_All_Versions(data=data, sub_emb_model=sub_embeddings, use_sub_attention=False, dim=emb_dim, nhead=my_nhead, num_layer=num_layers, fast=fast).to(device)
-
-if model_type == 'Pretrain_SubAtt':
-    our_model = SubAtt_All_Versions(data=data, sub_emb_model=sub_embeddings, use_sub_attention=True, dim=emb_dim, nhead=my_nhead, num_layer=num_layers, fast=fast).to(device)
-
-if model_type == 'No_Pretrain_SubAtt':
-    our_model = SubAtt_All_Versions(data=data, sub_emb_model=None, use_sub_attention=True, dim=emb_dim, nhead=my_nhead, num_layer=num_layers, fast=fast).to(device)
+#LOAD MODELS
+our_model = Subword_Torch(data, dim=word_emb_dim).to(device)
 
 
-
+##########
 
 optimizer = torch.optim.Adam(our_model.parameters(), lr = lr_init, eps=1e-07)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=lr_decay, patience = patience, mode='max', threshold=threshold)
@@ -213,7 +201,7 @@ for epoch in range(num_ep):
             end_ind = (batch + 1) * batch_size
 
             train_sub_tensor = torch.LongTensor(train_subwords_list[start_ind:end_ind]).to(device)
-            train_cc_tensor = torch.LongTensor(train_contexts_set_list[start_ind:end_ind]).to(device)
+            #train_cc_tensor = torch.LongTensor(train_contexts_set_list[start_ind:end_ind]).to(device)
             train_label_tensor = torch.FloatTensor(train_labels_list[start_ind:end_ind]).to(device)
                               
                            
@@ -221,14 +209,13 @@ for epoch in range(num_ep):
             
 
 
-            pred_emb = our_model.forward(train_sub_tensor, train_cc_tensor)
+            pred_emb = our_model.forward(train_sub_tensor)
             assert not torch.isnan(pred_emb).any()
             loss = -F.cosine_similarity(pred_emb, train_label_tensor).mean() 
             full_loss = loss
             assert not torch.isnan(full_loss).any()
             del pred_emb
             del train_sub_tensor
-            del train_cc_tensor
             del train_label_tensor
 
             full_loss.backward()
@@ -247,11 +234,10 @@ for epoch in range(num_ep):
 
 
                 val_sub_tensor = torch.LongTensor(val_subwords_list[start_ind:end_ind]).to(device)
-                val_cc_tensor = torch.LongTensor(val_contexts_set_list[start_ind:end_ind]).to(device)
                 val_label_tensor = torch.FloatTensor(val_labels_list[start_ind:end_ind]).to(device)
              
 
-                pred_emb = our_model.forward(val_sub_tensor, val_cc_tensor)
+                pred_emb = our_model.forward(val_sub_tensor)
             
                 assert not torch.isnan(pred_emb).any()
 
@@ -264,7 +250,6 @@ for epoch in range(num_ep):
 
                 del pred_emb
                 del val_sub_tensor
-                del val_cc_tensor
                 del val_label_tensor
 
 
@@ -289,6 +274,11 @@ for epoch in range(num_ep):
             torch.save(optimizer.state_dict(), f)
         
 
+
+pickle.dump( data.word2id_dict, open( out_directory+"/word2id_dict.p", "wb" ) )
+pickle.dump( data.sub2id_dict, open( out_directory+"/sub2id_dict.p", "wb" ) )
+pickle.dump( data, open( out_directory+"/full_data_loader.p", "wb" ) )
+
     
 my_filename = out_directory + '/finished.txt'
 outfile = open(my_filename,'w')
@@ -301,26 +291,21 @@ outfile.write('best ep '+best_saved_epoch)
 
 outfile.close()
 
-#load
 
+loaded_model = torch.load(out_directory+'/model.pt')
 
-outfile = open(model_directory+'/val_score.txt','w')
-outfile.write(str(results)+'\n')
-outfile.write(model_directory)
-outfile.close()
-
-
-
-
-
+#recently added
+subword_file = open(out_directory+'/best_ep_subword_emb_gensim.txt' ,'w')  
+subword_file.write('{} {}\n'.format(len(data.id2sub_dict), data.word_embeddings.wv.vector_size))
 
 
 for sub_ind in data.id2sub_dict:  #shouldn't have mask but just in case!
 	if sub_ind != 0: #this is a mask
 		subword = data.id2sub_dict[sub_ind]  #the actual subword
-		sub_emb = emb_matrix[sub_ind]
+		sub_emb = loaded_model.sub_emb.weight[sub_ind].cpu().detach().numpy()
 	
 		str_vec = ' '.join(map(str, list(sub_emb)))
 		subword_file.write('{} {}\n'.format(subword, str_vec))
 subword_file.close()
+
 

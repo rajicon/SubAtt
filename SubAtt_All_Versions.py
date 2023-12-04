@@ -400,9 +400,9 @@ class SubAtt_All_Versions(nn.Module):
                       #print(wrd)
                       c_list.append(word2id_dict[wrd])
 
-              print(c_list)
-              print(len(word2id_dict))
-              print('subatt'-2)
+              #print(c_list)
+              #print(len(word2id_dict))
+              #print('subatt'-2)
               while len(c_list) < max_words_per_context:
                   c_list.append(0)
 

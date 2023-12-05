@@ -11,7 +11,7 @@ Quick Usage:
 
 4)  Train SubAtt model using train_SubAtt_All_Versions.py
 
-5)  Use trained model to predict new embeddings using its estimate_vector() method.
+5)  Use trained model to predict new embeddings using its estimate_multiple_vectors() method. (If only one estimate, put word and context in a list).
 
 Some Examples:
 
